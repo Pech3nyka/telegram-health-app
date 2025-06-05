@@ -2,7 +2,7 @@ const statsDiv = document.getElementById('stats');
 const btn = document.getElementById('loadStatsBtn');
 
 btn.addEventListener('click', () => {
-  fetch('https://your-backend.onrender.com/api/getStats')
+  fetch('https://telegram-health-app.onrender.com')
     .then(res => res.json())
     .then(data => {
       statsDiv.innerHTML = `
