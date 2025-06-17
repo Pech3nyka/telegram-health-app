@@ -9,14 +9,15 @@ function showMainMenu(ctx) {
   return ctx.reply(
     'Вы в главном меню. Выберите действие:',
     Markup.keyboard([
-      ['📊 Показать статистику', '🏃 Добавить активность'],
-      ['😴 Добавить сон', '📝 Моя активность']
+      ['📊 Показать статистику', '📋 Моя активность'],
+      ['🏃 Добавить активность', '😴 Добавить сон']
     ])
-    .resize()
-    .oneTime()
+      .resize()
+      .oneTime()
   );
 }
 
+// Старт бота
 bot.start(async (ctx) => {
   const user = ctx.from;
   try {
@@ -31,16 +32,32 @@ bot.start(async (ctx) => {
   }
 });
 
+// Показать общую статистику
 bot.hears('📊 Показать статистику', async (ctx) => {
   try {
-    const res = await axios.get(`${API_BASE_URL}/api/getStats`);
-    const stats = res.data;
+    const telegramId = ctx.from.id;
+    const res = await axios.get(`${API_BASE_URL}/api/activity/byUser/${telegramId}`);
+    const data = res.data;
+
+    if (!data || data.length === 0) {
+      return ctx.reply('У вас пока нет записей активности.');
+    }
+
+    let totalSteps = 0;
+    let totalCalories = 0;
+    let totalDistance = 0;
+
+    data.forEach(item => {
+      totalSteps += item.steps || 0;
+      totalCalories += item.calories || 0;
+      totalDistance += item.distanceKm || 0;
+    });
+
     await ctx.reply(
-      `📊 Ваша статистика:\n` +
-      `Шаги: ${stats.steps}\n` +
-      `Калории: ${stats.calories}\n` +
-      `Сон: ${stats.sleep} часов\n` +
-      `Вода: ${stats.water} литров`,
+      `📊 Ваша статистика за всё время:\n\n` +
+      `👣 Шагов: ${totalSteps}\n` +
+      `📏 Расстояние: ${totalDistance.toFixed(2)} км\n` +
+      `🔥 Калорий: ${totalCalories}`,
       Markup.keyboard([['⬅️ Главное меню']]).resize().oneTime()
     );
   } catch (error) {
@@ -49,6 +66,29 @@ bot.hears('📊 Показать статистику', async (ctx) => {
   }
 });
 
+// Показать мою активность
+bot.hears('📋 Моя активность', async (ctx) => {
+  try {
+    const res = await axios.get(`${API_BASE_URL}/api/activity/${ctx.from.id}`);
+    const activities = res.data;
+
+    if (!activities.length) {
+      return ctx.reply('У вас пока нет сохранённой активности.');
+    }
+
+    let message = '📋 Ваша активность:\n\n';
+    activities.forEach((a, i) => {
+      message += `#${i + 1}\nШаги: ${a.steps}\nДистанция: ${a.distanceKm} км\nКалории: ${a.calories}\nДата: ${new Date(a.date).toLocaleString()}\n\n`;
+    });
+
+    await ctx.reply(message, Markup.keyboard([['⬅️ Главное меню']]).resize().oneTime());
+  } catch (error) {
+    console.error('Ошибка при получении активности:', error.message);
+    await ctx.reply('Не удалось загрузить активность. Попробуйте позже.');
+  }
+});
+
+// Добавить активность
 bot.hears('🏃 Добавить активность', (ctx) => {
   ctx.reply(
     'Пожалуйста, введи активность в формате:\n/activity <шаги> <дистанция км> <калории>\nНапример: /activity 5000 3.2 200',
@@ -61,7 +101,9 @@ bot.command('activity', async (ctx) => {
   const parts = text.split(' ');
 
   if (parts.length !== 4) {
-    return ctx.reply('Пожалуйста, используй формат: /activity <steps> <distanceKm> <calories>\nНапример: /activity 5000 3.2 200');
+    return ctx.reply(
+      'Пожалуйста, используй формат: /activity <steps> <distanceKm> <calories>\nНапример: /activity 5000 3.2 200'
+    );
   }
 
   const [, stepsStr, distanceStr, caloriesStr] = parts;
@@ -80,13 +122,17 @@ bot.command('activity', async (ctx) => {
       distanceKm,
       calories
     });
-    await ctx.reply('Активность успешно сохранена!', Markup.keyboard([['⬅️ Главное меню']]).resize().oneTime());
+    await ctx.reply(
+      'Активность успешно сохранена!',
+      Markup.keyboard([['⬅️ Главное меню']]).resize().oneTime()
+    );
   } catch (error) {
     console.error('Ошибка при сохранении активности:', error.message);
     await ctx.reply('Не удалось сохранить активность.');
   }
 });
 
+// Добавить сон
 bot.hears('😴 Добавить сон', (ctx) => {
   ctx.reply(
     'Пожалуйста, введи сон в формате:\n/sleep <часы> <качество>\nНапример: /sleep 7.5 хороший',
@@ -115,43 +161,17 @@ bot.command('sleep', async (ctx) => {
       hours,
       quality
     });
-    await ctx.reply('Данные о сне успешно сохранены!', Markup.keyboard([['⬅️ Главное меню']]).resize().oneTime());
+    await ctx.reply(
+      'Данные о сне успешно сохранены!',
+      Markup.keyboard([['⬅️ Главное меню']]).resize().oneTime()
+    );
   } catch (error) {
     console.error('Ошибка при сохранении сна:', error.message);
     await ctx.reply('Не удалось сохранить данные о сне. Попробуй позже.');
   }
 });
 
-bot.hears('📝 Моя активность', async (ctx) => {
-  ctx.telegram.emit('text', { ...ctx.message, text: '/myactivity' }, ctx);
-});
-
-bot.command('myactivity', async (ctx) => {
-  try {
-    const res = await axios.get(`${API_BASE_URL}/api/activity/${ctx.from.id}`);
-    const activities = res.data;
-
-    if (!activities.length) {
-      return ctx.reply('У вас пока нет записей об активности.');
-    }
-
-    const last = activities[activities.length - 1];
-    const date = new Date(last.date).toLocaleString('ru-RU');
-
-    await ctx.reply(
-      `📝 Последняя активность:\n` +
-      `📅 Дата: ${date}\n` +
-      `🚶 Шаги: ${last.steps}\n` +
-      `📏 Дистанция: ${last.distanceKm} км\n` +
-      `🔥 Калории: ${last.calories}`,
-      Markup.keyboard([['⬅️ Главное меню']]).resize().oneTime()
-    );
-  } catch (error) {
-    console.error('Ошибка при получении активности:', error.message);
-    await ctx.reply('Ошибка при получении данных. Попробуйте позже.');
-  }
-});
-
+// Возврат в главное меню
 bot.hears('⬅️ Главное меню', (ctx) => {
   showMainMenu(ctx);
 });
